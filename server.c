@@ -52,6 +52,39 @@ int sendall(int s, const char* buf, size_t* len) {
      return (n == -1) ? -1 : 0;
 }
 
+void parse_request(char* buffer, char** method, char** path) {
+     // TODO: parse method function
+     *method = strtok(buffer, " ");
+     // TODO: parse path function
+     *path = strtok(NULL, " ");
+}
+
+// TODO: serve_file function
+// GET method function
+const char* serve_file(const char* filepath) {
+     printf("sending generic resopnse\n");
+     return "HTTP/0.9 200 OK\r\n"
+          "Content-Type: text/plain\r\n\r\n"
+          "Hello, World!";
+}
+
+const char* perform_request(const char* method, const char* filepath) {
+     printf("Method - %s, Path - %s\n", method, filepath);
+
+     const char* response;
+     if(strcmp(method, "GET") != 0) {
+          printf("Invalid argument: method %s unsupported\n", method);
+          response = "HTTP/0.9 405 Method Not Allowed\r\n\r\n";
+          return response;
+     }
+
+     // TODO: currently assumes method is GET, add more methods in future
+     response = serve_file(filepath);
+
+     return response;          
+}
+
+
 int main(void) {
      struct addrinfo hints, *servinfo;
      int rv;
@@ -140,29 +173,21 @@ int main(void) {
           if(!fork()) {
                close(sockfd);
 
-               // TODO: do something about buffer overflow
                char buffer[BUFF_SIZE] = {0};
                recv(new_fd, buffer, BUFF_SIZE, 0);
-               printf("Request: %s\n", buffer);
 
-               // TODO: Implement handling html file serving
-               const char* response = 
-                    "HTTP/0.9 200 OK\r\n"
-                    "Content-Type: text/plain\r\n\r\n"
-                    "Hello, World!";
+               // GET /index.html
+               char *method, *path;
+               printf("Request: %s\n", buffer);
+               parse_request(buffer, &method, &path);
+
+               const char* response = perform_request(method, path);
                size_t reslen = strlen(response);     
+
                if(sendall(new_fd, response, &reslen) == -1) {
                     perror("sendall");
                     printf("Only %zu bytes of data were sent before an error!\n", reslen);
                }
-               
-
-               // char* str = "Hello, world!, again\n";
-               // size_t len = strlen(str);
-               // if (sendall(new_fd, str, &len) == -1) {
-               //      perror("sendall");
-               //      printf("Only %zu bytes of data were sent before an error!\n", len);
-               // }
 
                close(new_fd);
                exit(0);
