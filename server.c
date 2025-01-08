@@ -151,7 +151,11 @@ int main(void) {
                     "Content-Type: text/plain\r\n\r\n"
                     "Hello, World!";
                size_t reslen = strlen(response);     
-               sendall(new_fd, response, &reslen);
+               if(sendall(new_fd, response, &reslen) == -1) {
+                    perror("sendall");
+                    printf("Only %zu bytes of data were sent before an error!\n", reslen);
+               }
+               
 
                // char* str = "Hello, world!, again\n";
                // size_t len = strlen(str);
