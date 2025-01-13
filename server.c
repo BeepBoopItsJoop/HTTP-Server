@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-// #include <sys/types.h>
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
@@ -106,7 +106,7 @@ const char* serve_file(int fd, const char* path) {
 }
 
 const char* perform_request(int fd, const char* method, const char* filepath) {
-     printf("Method - %s, Path - %s\n", method, filepath);
+     printf("DEBUG:\nMethod - %s, Path - %s\n", method, filepath);
 
      const char* response;
      if(strcmp(method, "GET") != 0) {
@@ -123,8 +123,7 @@ const char* perform_request(int fd, const char* method, const char* filepath) {
 
 
 int main(void) {
-     struct addrinfo hints, *servinfo;
-     int rv;
+     struct addrinfo hints;
 
      memset(&hints, 0, sizeof(hints));
      hints.ai_family = AF_UNSPEC;
@@ -132,6 +131,8 @@ int main(void) {
      hints.ai_flags = AI_PASSIVE; // Use machine IP
 
      // get address info for this host machine
+     struct addrinfo* servinfo; 
+     int rv;
      if((rv = getaddrinfo(NULL, PORT, &hints, &servinfo)) != 0) {
           fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
           return 1;
@@ -190,7 +191,6 @@ int main(void) {
 
     printf("server: waiting for connections...\n");
 
-     // 
      int new_fd;
      struct sockaddr_storage client_addr;
      socklen_t sin_size = sizeof(client_addr);
@@ -215,7 +215,7 @@ int main(void) {
 
                // GET /index.html
                char *method, *path;
-               printf("Request: %s\n", buffer);
+               printf("DEBUG:\nRequest: %s\n", buffer);
                parse_request(buffer, &method, &path);
 
                const char* response = perform_request(new_fd, method, path);
