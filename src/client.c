@@ -1,49 +1,10 @@
-// find first available socket
-// connect
-// receive
-// do other stuff
-// close
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <unistd.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#define BUFF_SIZE 1024
+#include "networking.h"
+
 #define MAXDATASIZE 100  // max number of bytes we can get at once
-
-// get sockaddr, IPv4 or IPv6:
-void *get_in_addr(struct sockaddr *sa) {
-     if (sa->sa_family == AF_INET) {
-          return &(((struct sockaddr_in *)sa)->sin_addr);
-     }
-     
-     return &(((struct sockaddr_in6 *)sa)->sin6_addr);
-}
-
-int sendall(int s, const char* buf, size_t* len) {
-     int totalsent = 0;
-     int bytesleft = *len;
-     int n;
-
-     while(totalsent < *len) {
-          n = send(s, buf+totalsent, bytesleft, 0);
-          if(n == -1) break;
-          
-          totalsent += n; 
-          bytesleft -= n; 
-     }
-
-     *len = totalsent;
-
-     return (n == -1) ? -1 : 0;
-}
 
 int main(int argc, char *argv[]) {
 
@@ -109,7 +70,7 @@ int main(int argc, char *argv[]) {
           printf("Only %zu bytes of data were sent before an error!\n", reqlen);
      }
 
-     FILE* file = fopen("receivedsite.html", "w");
+     FILE* file = fopen("build/receivedsite.html", "w");
      if(file == NULL) {
           perror("fopen");
           exit(1);
