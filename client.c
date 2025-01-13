@@ -15,8 +15,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#define PORT "3490"  // the port client will be connecting to
-
 #define BUFF_SIZE 1024
 #define MAXDATASIZE 100  // max number of bytes we can get at once
 
@@ -51,11 +49,14 @@ int main(int argc, char *argv[]) {
 
      char s[INET6_ADDRSTRLEN];
 
-     if (argc != 2) {
-          fprintf(stderr, "usage: client hostname\n");
+     if (argc != 4) {
+          fprintf(stderr, "usage: client hostname port filepath\n");
           exit(1);
      }
-     
+     const char* HOSTNAME = argv[1];
+     const char* PORT = argv[2];
+     const char* FILEPATH = argv[3];
+
      // get address info
      struct addrinfo hints;
      memset(&hints, 0, sizeof hints);
@@ -64,7 +65,7 @@ int main(int argc, char *argv[]) {
 
      struct addrinfo* servinfo; 
      int rv;
-     if ((rv = getaddrinfo(argv[1], PORT, &hints, &servinfo)) != 0) {
+     if ((rv = getaddrinfo(HOSTNAME, PORT, &hints, &servinfo)) != 0) {
           fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
           return 1;
      }
@@ -100,6 +101,7 @@ int main(int argc, char *argv[]) {
      freeaddrinfo(servinfo);  // all done with this structure
 
      char reqbuf[BUFF_SIZE] = "GET /test.html";
+     sprintf(reqbuf, "GET %s", FILEPATH);
      size_t reqlen = BUFF_SIZE;
 
      if(sendall(sockfd, reqbuf, &reqlen) == -1) {
@@ -107,17 +109,33 @@ int main(int argc, char *argv[]) {
           printf("Only %zu bytes of data were sent before an error!\n", reqlen);
      }
 
-     char buf[MAXDATASIZE];
-     int numbytes = recv(sockfd, buf, MAXDATASIZE - 1, 0);
-
-     if (numbytes == -1) {
-          perror("recv");
+     FILE* file = fopen("receivedsite.html", "w");
+     if(file == NULL) {
+          perror("fopen");
           exit(1);
      }
 
-     buf[numbytes] = '\0';
+     char buf[MAXDATASIZE];
+     int bytes_recv;
+     int bytes_written;
+     while(1) {
+          bytes_recv = recv(sockfd, buf, MAXDATASIZE - 1, 0);
+          if(bytes_recv == 0) {
+               break;
+          }
+          if(bytes_recv == -1) {
+               perror("recv");
+               exit(1);
+          }
 
-     printf("client: received '%s'\n", buf);
+          // TODO: overenginner or whateer idk atp
+          bytes_written = fwrite(buf, sizeof(char), bytes_recv, file);
+          if(bytes_written != bytes_recv) {
+               perror("fwrite");
+               break;
+          }
+     }
+     fclose(file);
 
      close(sockfd);
 
