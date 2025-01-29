@@ -23,7 +23,7 @@ typedef struct {
      // Request Body (optional)
      char* body;
      size_t body_length;
-} Request;
+} HttpRequest;
 
 typedef struct {
      // Status line
@@ -34,4 +34,4 @@ typedef struct {
      HttpHeaders headers;
 
      char* body;
-} Response;
+} HttpResponse;
