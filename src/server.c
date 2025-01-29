@@ -1,5 +1,6 @@
 #include <sys/wait.h>
 #include <signal.h>
+#include <stdbool.h>
 
 #include "networking.h"
 
@@ -85,8 +86,7 @@ const char* perform_request(int fd, const char* method, const char* filepath) {
      return response;          
 }
 
-
-int main(void) {
+bool addrConfig(struct addrinfo** servinfo) {
      struct addrinfo hints;
 
      memset(&hints, 0, sizeof(hints));
@@ -95,10 +95,19 @@ int main(void) {
      hints.ai_flags = AI_PASSIVE; // Use machine IP
 
      // get address info for this host machine
-     struct addrinfo* servinfo; 
      int rv;
-     if((rv = getaddrinfo(NULL, PORT, &hints, &servinfo)) != 0) {
+     if((rv = getaddrinfo(NULL, PORT, &hints, servinfo)) != 0) {
           fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+          return 1;
+     }
+     return 0;
+
+}
+
+
+int main(void) {
+     struct addrinfo* servinfo;
+     if(addrConfig(&servinfo)) {
           return 1;
      }
 
