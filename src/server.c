@@ -104,6 +104,41 @@ bool addrConfig(struct addrinfo** servinfo) {
 
 }
 
+bool openSockBind(struct addrinfo* servinfo, int* sockfd) {
+// loop through result linked list and bind to the first one we can
+     struct addrinfo* p;
+     for(p = servinfo; p != NULL; p = p->ai_next) {
+          *sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+          if (*sockfd == -1) {
+               perror("server: socket");
+               continue;
+          }
+
+          // configure socket info
+          int yes = 1; 
+          int setres = setsockopt(*sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+          if (setres == -1) {
+               perror("setsockopt");
+               return(1);
+          }
+          
+          int bindres = bind(*sockfd, p->ai_addr, p->ai_addrlen);
+          if(bindres == -1) {
+               close(*sockfd);
+               perror("server: bind");
+               continue;
+          }     
+
+          break;    
+     }
+
+
+     if(p == NULL) {
+          fprintf(stderr, "server: failed to bind\n");
+          return(1);
+     }
+}
+
 
 int main(void) {
      struct addrinfo* servinfo;
@@ -111,40 +146,12 @@ int main(void) {
           return 1;
      }
 
-     // loop through results and bind to the first one we can
      int sockfd;
-     struct addrinfo* p;
-     for(p = servinfo; p != NULL; p = p->ai_next) {
-          sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-          if (sockfd == -1) {
-               perror("server: socket");
-               continue;
-          }
-
-          // configure socket info
-          int yes = 1; 
-          int setres = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
-          if (setres == -1) {
-               perror("setsockopt");
-               exit(1);
-          }
-          
-          int bindres = bind(sockfd, p->ai_addr, p->ai_addrlen);
-          if(bindres == -1) {
-               close(sockfd);
-               perror("server: bind");
-               continue;;
-          }     
-
-          break;    
+     if(openSockBind(servinfo, &sockfd)) {
+          return 1;
      }
 
      freeaddrinfo(servinfo);
-
-     if(p == NULL) {
-          fprintf(stderr, "server: failed to bind\n");
-          exit(1);
-     }
 
      int lisres = listen(sockfd, BACKLOG);
      if(lisres == -1) {
@@ -164,6 +171,7 @@ int main(void) {
 
     printf("server: waiting for connections...\n");
 
+     // Main loop
      int new_fd;
      struct sockaddr_storage client_addr;
      socklen_t sin_size = sizeof(client_addr);
