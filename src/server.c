@@ -8,75 +8,6 @@
 #define ROOT "./www"
 #define BACKLOG 10
 
-void trim_newline(char* str) {
-     size_t len = strlen(str);
-
-     // Loop through the string backwards and remove any \n or \r
-     while (len > 0 && (str[len - 1] == '\n' || str[len - 1] == '\r')) {
-          str[len - 1] = '\0';  // Replace the last character with null terminator
-          len--;                // Reduce the length to move towards the beginning of the string
-     }
-}
-void parse_request(char* buffer, char** method, char** path) {
-     trim_newline(buffer);
-
-     // TODO: parse method function
-     *method = strtok(buffer, " ");
-     // TODO: parse path function
-     *path = strtok(NULL, " ");
-}
-
-// GET method function
-const char* serve_file(int fd, const char* path) {
-     // Prevent "../"
-     if (strstr(path, "..")) {
-          return "<plaintext>HTTP/0.9 403 Forbidden\r\n\r\nAccess Denied!";
-     }
-
-     char filepath[BUFF_SIZE];
-     snprintf(filepath, BUFF_SIZE, "%s%s", ROOT, path);
-
-     FILE* file = fopen(filepath, "r");
-     if (file == NULL) {
-          perror("serve_file");
-          return "<plaintext>HTTP/0.9 404 Not Found\r\n\r\nFile Not Found!";
-     }
-
-     char buffer[BUFF_SIZE];
-     size_t bytes_read;
-
-     // Read and send content in chunks
-     size_t bytes_sent;
-     while ((bytes_read = fread(buffer, sizeof(char), BUFF_SIZE, file)) > 0) {
-          bytes_sent = bytes_read;
-          if (sendall(fd, buffer, &bytes_sent) == -1) {
-               perror("sendall");
-               printf("Only %zu bytes out of %d were sent before an error!\n",
-                      bytes_sent, BUFF_SIZE);
-          }
-     }
-
-     fclose(file);
-
-     return "";
-}
-
-const char* perform_request(int fd, const char* method, const char* filepath) {
-     printf("DEBUG:\nMethod - %s, Path - %s\n", method, filepath);
-
-     const char* response;
-     if (strcmp(method, "GET") != 0) {
-          printf("Invalid argument: method %s unsupported\n", method);
-          response = "<plaintext>HTTP/0.9 405 Method Not Allowed\r\n\r\n";
-          return response;
-     }
-
-     // TODO: currently assumes method is GET, add more methods in future
-     response = serve_file(fd, filepath);
-
-     return response;
-}
-
 bool addrConfig(struct addrinfo** servinfo) {
      struct addrinfo hints;
 
@@ -154,6 +85,76 @@ void handleConnection(int fd) {
           perror("sendall");
           printf("Only %zu bytes of data were sent before an error!\n", reslen);
      }
+}
+
+void trim_newline(char* str) {
+     size_t len = strlen(str);
+
+     // Loop through the string backwards and remove any \n or \r
+     while (len > 0 && (str[len - 1] == '\n' || str[len - 1] == '\r')) {
+          str[len - 1] = '\0';  // Replace the last character with null terminator
+          len--;                // Reduce the length to move towards the beginning of the string
+     }
+}
+
+void parse_request(char* buffer, char** method, char** path) {
+     trim_newline(buffer);
+
+     // TODO: parse method function
+     *method = strtok(buffer, " ");
+     // TODO: parse path function
+     *path = strtok(NULL, " ");
+}
+
+// GET method function
+const char* serve_file(int fd, const char* path) {
+     // Prevent "../"
+     if (strstr(path, "..")) {
+          return "<plaintext>HTTP/0.9 403 Forbidden\r\n\r\nAccess Denied!";
+     }
+
+     char filepath[BUFF_SIZE];
+     snprintf(filepath, BUFF_SIZE, "%s%s", ROOT, path);
+
+     FILE* file = fopen(filepath, "r");
+     if (file == NULL) {
+          perror("serve_file");
+          return "<plaintext>HTTP/0.9 404 Not Found\r\n\r\nFile Not Found!";
+     }
+
+     char buffer[BUFF_SIZE];
+     size_t bytes_read;
+
+     // Read and send content in chunks
+     size_t bytes_sent;
+     while ((bytes_read = fread(buffer, sizeof(char), BUFF_SIZE, file)) > 0) {
+          bytes_sent = bytes_read;
+          if (sendall(fd, buffer, &bytes_sent) == -1) {
+               perror("sendall");
+               printf("Only %zu bytes out of %d were sent before an error!\n",
+                      bytes_sent, BUFF_SIZE);
+          }
+     }
+
+     fclose(file);
+
+     return "";
+}
+
+const char* perform_request(int fd, const char* method, const char* filepath) {
+     printf("DEBUG:\nMethod - %s, Path - %s\n", method, filepath);
+
+     const char* response;
+     if (strcmp(method, "GET") != 0) {
+          printf("Invalid argument: method %s unsupported\n", method);
+          response = "<plaintext>HTTP/0.9 405 Method Not Allowed\r\n\r\n";
+          return response;
+     }
+
+     // TODO: currently assumes method is GET, add more methods in future
+     response = serve_file(fd, filepath);
+
+     return response;
 }
 
 int main(void) {
