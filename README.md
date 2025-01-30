@@ -15,22 +15,31 @@ Per 0.9, supports the GET method to receive an ASCII stream of bytes to receive 
 # HTTP 1.0
 ## TODO:
 
-* [ ] Request structure
+* [x] Request structure
 	* [x] Write
-	* [ ] Refactor using dynamic allocation
-* [ ] Parsing
-	* [ ] using new structs
-		* [ ] dynamic allocation  for strings
-	* [ ] version
-	* [ ] path without filetype
-	* [ ] filetype - stores in `Content-Type`
+* [x] Parsing
+	* [x] using new structs
+	* [x] version
+	* [x] path without filetype
+	* [x] filetype - stores in `Content-Type`
+* [x] Refactor GET
+* [x] Decide method function based on Request.method
+* [x] SendRes function
+     * [x] Version, Status, Reason
+     * [x] `\r\n`
+     * [x] Add `Content-length` header 
+          * [x] Calculate body length
+     * [x] Loop through headers
+          * [x] Add `\r\n` at the end of each one
+     * [x] Add a blank line
+     * [x] Read and send file or body
+* [x] Status codes
+	* [x] Get reason phrase dynamically from enum
+- [x] Research 
+	- [x] Caching
+* [ ] Handle filetype dynamically
+     * [ ] Set content type header based on extension
 * [ ] New methods
-	* [ ] Decide method function based on Request.method
-	* [ ] Implement methods
-		* [ ] Refactor GET
-		* [ ] POST
-* [ ] Status codes
-	* [ ] Define status code enum
-	* [ ] Get reason phrase dynamically from enum
-- [ ] Research 
-	- [ ] Caching
+	* [] POST
+* [ ] Refactor HttpHeaders to be dynamically allocated
+* [ ] Implement chunked transfer encoding

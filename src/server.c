@@ -3,9 +3,10 @@
 #include <sys/wait.h>
 
 #include "networking.h"
+#include "request.h"
 
 #define PORT "3490"
-#define ROOT "./www"
+#define ROOT "../www"
 #define BACKLOG 10
 
 bool addrConfig(struct addrinfo** servinfo) {
@@ -69,24 +70,7 @@ void sigchld_handler(int s) {
      errno = saved_errno;
 }
 
-void handleConnection(int fd) {
-     char buffer[BUFF_SIZE] = {0};
-     recv(fd, buffer, BUFF_SIZE, 0);
-
-     // GET /index.html
-     char *method, *path;
-     printf("DEBUG:\nRequest: %s\n", buffer);
-     parse_request(buffer, &method, &path);
-
-     const char* response = perform_request(fd, method, path);
-     size_t reslen = strlen(response);
-
-     if (sendall(fd, response, &reslen) == -1) {
-          perror("sendall");
-          printf("Only %zu bytes of data were sent before an error!\n", reslen);
-     }
-}
-
+// TODO: remove this
 void trim_newline(char* str) {
      size_t len = strlen(str);
 
@@ -97,64 +81,180 @@ void trim_newline(char* str) {
      }
 }
 
-void parse_request(char* buffer, char** method, char** path) {
-     trim_newline(buffer);
-
-     // TODO: parse method function
-     *method = strtok(buffer, " ");
-     // TODO: parse path function
-     *path = strtok(NULL, " ");
+const char* get_reason_phrase(int code) {
+     switch (code) {
+          case 200:
+               return "OK";
+          case 403:
+               return "Forbidden";
+          case 404:
+               return "Not found";
+          case 405:
+               return "Method not allowed";
+          default:
+               return "Unknown status code";
+     }
 }
 
-// GET method function
-const char* serve_file(int fd, const char* path) {
-     // Prevent "../"
-     if (strstr(path, "..")) {
-          return "<plaintext>HTTP/0.9 403 Forbidden\r\n\r\nAccess Denied!";
+void parse_request(char* buffer, HttpRequest* req) {
+     // trim_newline(buffer);
+
+     req->method = strtok(buffer, " ");
+     req->path = strtok(NULL, " ");
+     req->version = strtok(NULL, "\r\n");
+
+     // Parse headers
+     // TODO: do better parsing
+     for (req->headers.count = 0;
+          req->headers.count < MAX_HEADERS;
+          req->headers.count++) {
+          char* key = strtok(NULL, ":");
+          char* value = strtok(NULL, "\r");
+          if (key == NULL || value == NULL) break;
+
+          key++[0] = ' ';
+          value++[0] = ' ';
+
+          req->headers.data[req->headers.count].key = key;
+          req->headers.data[req->headers.count].value = value;
      }
 
+     // TODO: Parse optional body
+}
+
+HttpResponse http_get(HttpRequest* req) {
      char filepath[BUFF_SIZE];
-     snprintf(filepath, BUFF_SIZE, "%s%s", ROOT, path);
+     snprintf(filepath, BUFF_SIZE, "%s%s%s", ROOT, (strcmp(req->path, "/") == 0 ? "/index" : req->path), ".html");
+     // TODO: add file ext based on header
 
      FILE* file = fopen(filepath, "r");
      if (file == NULL) {
-          perror("serve_file");
-          return "<plaintext>HTTP/0.9 404 Not Found\r\n\r\nFile Not Found!";
+          perror("fopen");
+          HttpResponse res = create_http_res(404, get_reason_phrase(404),
+                                             HTTP_VERSION, "File not found!", NULL, strlen("File not found!"));
+          res.headers.data[res.headers.count++] = (HttpHeader){"Content-Type", "text/plain"};
+
+          return res;
      }
 
-     char buffer[BUFF_SIZE];
-     size_t bytes_read;
+     HttpResponse res = create_http_res(200, get_reason_phrase(200), HTTP_VERSION, "", file, 0);
+     // TODO: headers for content type!
+     res.headers.data[res.headers.count++] = (HttpHeader){"Content-Type", "text/html"};
 
-     // Read and send content in chunks
-     size_t bytes_sent;
-     while ((bytes_read = fread(buffer, sizeof(char), BUFF_SIZE, file)) > 0) {
-          bytes_sent = bytes_read;
-          if (sendall(fd, buffer, &bytes_sent) == -1) {
+     return res;
+}
+
+HttpResponse perform_request(HttpRequest* req) {
+     printf("DEBUG - Method: \"%s\", Path: \"%s\", Version: \"%s\"\n", req->method, req->path, req->version);
+
+     // Prevent "../"
+     if (strstr(req->path, "..")) {
+          HttpResponse res = create_http_res(403, get_reason_phrase(403), HTTP_VERSION, "Permission denied!", NULL, strlen("Permission denied!"));
+
+          res.headers.data[res.headers.count++] = (HttpHeader){"Content-Type", "text/plain"};
+
+          return res;
+     }
+
+     if (!strcmp(req->method, "GET")) {
+          return http_get(req);
+          // TODO: implement POST
+          // } else if (!strcmp(req->method, "POST")) {
+          // return http_post();
+     } else {
+          fprintf(stderr, "Invalid argument: method %s unsupported\n", req->method);
+          HttpResponse res = create_http_res(405, get_reason_phrase(405), HTTP_VERSION, "", NULL, 0);
+
+          return res;
+     }
+}
+
+void SendHttpResponse(int fd, HttpResponse* res) {
+     char header_buffer[BUFF_SIZE];
+     size_t header_size = 0;
+
+     header_size += snprintf(header_buffer + header_size, BUFF_SIZE - header_size, "%s %d %s\r\n", res->version, res->status, res->reason);
+
+     for (size_t i = 0; i < res->headers.count; i++) {
+          header_size += snprintf(header_buffer + header_size, BUFF_SIZE - header_size, "%s: %s\r\n", res->headers.data[i].key, res->headers.data[i].value);
+     }
+
+     if (res->file) {
+          // Read file contents and calculate the length
+          char file_buffer[FILE_BUFF_SIZE];
+          size_t body_size = fread(file_buffer, sizeof(char), FILE_BUFF_SIZE, res->file);
+
+          // Add content length header
+          header_size += snprintf(header_buffer + header_size, BUFF_SIZE - header_size, "%s: %zu\r\n", "Content-length", body_size);
+          // Add blank line before the body
+          header_size += snprintf(header_buffer + header_size, BUFF_SIZE - header_size, "\r\n");
+
+          if (sendall(fd, header_buffer, &header_size) == -1) {
                perror("sendall");
-               printf("Only %zu bytes out of %d were sent before an error!\n",
-                      bytes_sent, BUFF_SIZE);
+               printf("Only %zu bytes of data were sent before an error in header!\n", header_size);
+               fclose(res->file);
+               return;
+          }
+          if (sendall(fd, file_buffer, &body_size) == -1) {
+               perror("sendall");
+               printf("Only %zu bytes of data were sent before an error in file!\n", body_size);
+               fclose(res->file);
+               return;
+          }
+
+     } else {
+          // Add content length header
+          header_size += snprintf(header_buffer + header_size, BUFF_SIZE - header_size, "%s: %zu\r\n", "Content-length", res->body_length);
+          // Add blank line before the body
+          header_size += snprintf(header_buffer + header_size, BUFF_SIZE - header_size, "\r\n");
+
+          if (sendall(fd, header_buffer, &header_size) == -1) {
+               perror("sendall");
+               printf("Only %zu bytes of data were sent before an error in header!\n", header_size);
+               return;
+          }
+          if (sendall(fd, res->body, &res->body_length) == -1) {
+               perror("sendall");
+               printf("Only %zu bytes of data were sent before an error in body!\n", res->body_length);
+               return;
           }
      }
 
-     fclose(file);
+     // size_t bytes_read;
+     // size_t bytes_sent;
+     // while ((bytes_read = fread(buffer, sizeof(char), BUFF_SIZE, res->file)) > 0) {
+     //      bytes_sent = bytes_read;
+     //      if (sendall(fd, buffer, &bytes_sent) == -1) {
+     //           perror("sendall");
+     //           printf("Only %zu bytes out of %d were sent before an error!\n",
+     //                  bytes_sent, BUFF_SIZE);
+     //      }
+     // }
 
-     return "";
+     // const char* serve_file(int fd, const char* path) {
+
+     //      char buffer[BUFF_SIZE];
+     //      size_t bytes_read;
+
+     //      // Read and send content in chunks
+
+     //      return "";
+     // }
 }
 
-const char* perform_request(int fd, const char* method, const char* filepath) {
-     printf("DEBUG:\nMethod - %s, Path - %s\n", method, filepath);
+void handleConnection(int fd) {
+     char buffer[BUFF_SIZE] = {0};
+     recv(fd, buffer, BUFF_SIZE, 0);
+     printf("DEBUG - Received request\n - Start- \n%s\n - End -\n", buffer);
 
-     const char* response;
-     if (strcmp(method, "GET") != 0) {
-          printf("Invalid argument: method %s unsupported\n", method);
-          response = "<plaintext>HTTP/0.9 405 Method Not Allowed\r\n\r\n";
-          return response;
-     }
+     // GET /index.html HTTP/1.0
+     HttpRequest request;
+     parse_request(buffer, &request);
 
-     // TODO: currently assumes method is GET, add more methods in future
-     response = serve_file(fd, filepath);
+     HttpResponse response = perform_request(&request);
 
-     return response;
+     // TODO: should this return an error?
+     SendHttpResponse(fd, &response);
 }
 
 int main(void) {
@@ -176,9 +276,9 @@ int main(void) {
           exit(1);
      }
 
-     // black magic
+     // Reap zombie child processes after fork()ing
      struct sigaction sa;
-     sa.sa_handler = sigchld_handler;  // reap all dead processes
+     sa.sa_handler = sigchld_handler;
      sigemptyset(&sa.sa_mask);
      sa.sa_flags = SA_RESTART;
      if (sigaction(SIGCHLD, &sa, NULL) == -1) {
@@ -206,7 +306,8 @@ int main(void) {
           printf("server: got connection from %s\n", s);
 
           // Handle connection in a seperate process
-          if (!fork()) {
+          int id = fork();
+          if (!id) {
                close(sockfd);
 
                handleConnection(new_fd);
