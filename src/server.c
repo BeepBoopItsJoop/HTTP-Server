@@ -173,73 +173,43 @@ void SendHttpResponse(int fd, HttpResponse* res) {
      char header_buffer[BUFF_SIZE];
      size_t header_size = 0;
 
+     // Print status line
      header_size += snprintf(header_buffer + header_size, BUFF_SIZE - header_size, "%s %d %s\r\n", res->version, res->status, res->reason);
 
+     // Print headers
      for (size_t i = 0; i < res->headers.count; i++) {
           header_size += snprintf(header_buffer + header_size, BUFF_SIZE - header_size, "%s: %s\r\n", res->headers.data[i].key, res->headers.data[i].value);
      }
 
+     // TODO: maybe find a way to not do this lol
+     char file_buffer[FILE_BUFF_SIZE];
+     size_t body_size = 0;
      if (res->file) {
           // Read file contents and calculate the length
-          char file_buffer[FILE_BUFF_SIZE];
-          size_t body_size = fread(file_buffer, sizeof(char), FILE_BUFF_SIZE, res->file);
-
-          // Add content length header
-          header_size += snprintf(header_buffer + header_size, BUFF_SIZE - header_size, "%s: %zu\r\n", "Content-length", body_size);
-          // Add blank line before the body
-          header_size += snprintf(header_buffer + header_size, BUFF_SIZE - header_size, "\r\n");
-
-          if (sendall(fd, header_buffer, &header_size) == -1) {
-               perror("sendall");
-               printf("Only %zu bytes of data were sent before an error in header!\n", header_size);
-               fclose(res->file);
-               return;
-          }
-          if (sendall(fd, file_buffer, &body_size) == -1) {
-               perror("sendall");
-               printf("Only %zu bytes of data were sent before an error in file!\n", body_size);
-               fclose(res->file);
-               return;
-          }
-
+          body_size = fread(file_buffer, sizeof(char), FILE_BUFF_SIZE, res->file);
      } else {
-          // Add content length header
-          header_size += snprintf(header_buffer + header_size, BUFF_SIZE - header_size, "%s: %zu\r\n", "Content-length", res->body_length);
-          // Add blank line before the body
-          header_size += snprintf(header_buffer + header_size, BUFF_SIZE - header_size, "\r\n");
-
-          if (sendall(fd, header_buffer, &header_size) == -1) {
-               perror("sendall");
-               printf("Only %zu bytes of data were sent before an error in header!\n", header_size);
-               return;
-          }
-          if (sendall(fd, res->body, &res->body_length) == -1) {
-               perror("sendall");
-               printf("Only %zu bytes of data were sent before an error in body!\n", res->body_length);
-               return;
-          }
+          body_size = res->body_length;
      }
 
-     // size_t bytes_read;
-     // size_t bytes_sent;
-     // while ((bytes_read = fread(buffer, sizeof(char), BUFF_SIZE, res->file)) > 0) {
-     //      bytes_sent = bytes_read;
-     //      if (sendall(fd, buffer, &bytes_sent) == -1) {
-     //           perror("sendall");
-     //           printf("Only %zu bytes out of %d were sent before an error!\n",
-     //                  bytes_sent, BUFF_SIZE);
-     //      }
-     // }
+     // Add content length header
+     header_size += snprintf(header_buffer + header_size, BUFF_SIZE - header_size, "%s: %zu\r\n", "Content-length", body_size);
+     // Add blank line before the body
+     header_size += snprintf(header_buffer + header_size, BUFF_SIZE - header_size, "\r\n");
 
-     // const char* serve_file(int fd, const char* path) {
+     if (sendall(fd, header_buffer, &header_size) == -1) {
+          perror("sendall");
+          printf("Only %zu bytes of data were sent before an error in header!\n", header_size);
+          if (res->file) fclose(res->file);
+          return;
+     }
+     if (sendall(fd, (res->file ? file_buffer : res->body), &body_size) == -1) {
+          perror("sendall");
+          printf("Only %zu bytes of data were sent before an error in body!\n", body_size);
+          if (res->file) fclose(res->file);
+          return;
+     }
 
-     //      char buffer[BUFF_SIZE];
-     //      size_t bytes_read;
-
-     //      // Read and send content in chunks
-
-     //      return "";
-     // }
+     if (res->file) fclose(res->file);
 }
 
 void handleConnection(int fd) {
